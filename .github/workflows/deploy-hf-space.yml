@@ -21,7 +21,19 @@ jobs:
           git config --global user.email "actions@github.com"
           git config --global user.name "github-actions[bot]"
 
-      - name: Push to Hugging Face Space
+      - name: Build filtered Space bundle
+        run: |
+          rm -rf hf-space-deploy
+          mkdir -p hf-space-deploy
+          cp -R app hf-space-deploy/app
+          cp requirements.txt hf-space-deploy/requirements.txt
+          cp Dockerfile hf-space-deploy/Dockerfile
+          cp README.md hf-space-deploy/README.md
+          cp .dockerignore hf-space-deploy/.dockerignore
+          cp .gitattributes hf-space-deploy/.gitattributes || true
+          cp .env.example hf-space-deploy/.env.example
+
+      - name: Push filtered bundle to Hugging Face Space
         env:
           HF_SPACE_TOKEN: ${{ secrets.HF_SPACE_TOKEN }}
           HF_SPACE_REPO: huggingface.co/spaces/HarishS202/dealer-returns-ai-inspector
@@ -31,6 +43,12 @@ jobs:
             exit 1
           fi
 
-          git remote remove hf-space 2>/dev/null || true
+          cd hf-space-deploy
+          git init
+          git checkout -b main
+          git config user.email "actions@github.com"
+          git config user.name "github-actions[bot]"
+          git add .
+          git commit -m "Deploy filtered bundle from GitHub Actions"
           git remote add hf-space "https://oauth2:${HF_SPACE_TOKEN}@${HF_SPACE_REPO}"
-          git push hf-space HEAD:main --force
+          git push hf-space main --force
