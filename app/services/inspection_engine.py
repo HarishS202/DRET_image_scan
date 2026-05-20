@@ -18,6 +18,18 @@ DEFAULT_CODE_MAP = {
     "S": "9",
 }
 
+REJECTION_CODE_DESCRIPTION = {
+    "A": "rusty or corroded condition",
+    "B": "damaged condition",
+    "D": "failed return disposition rules",
+    "H": "used or not in new condition",
+    "I": "inspection criteria not met",
+    "N": "superseded part",
+    "O": "part not authorized for return",
+    "R": "packaging not in salable condition",
+    "S": "quality screening rejection",
+}
+
 
 @dataclass
 class InspectionEngine:
@@ -61,10 +73,22 @@ class InspectionEngine:
 
     def post_process(self, extracted: dict, rga_text: str, rejection_text: str) -> ProcessingResult:
         lines: list[ReturnLine] = []
+        rejection_map = self._extract_rejection_map(rejection_text)
+        rga_doc_type = self.detect_document_type(rga_text)
+        rejected_doc_type = self.detect_document_type(rejection_text)
 
         for item in extracted.get("lines", []):
             rej = item.get("rejection", {}) or {}
-            code = str(rej.get("code", "")).upper().strip()
+            part_number = str(item.get("part_number", "") or "").strip()
+            matched_rejection = rejection_map.get(part_number, {})
+
+            code = str(rej.get("code", "") or matched_rejection.get("code", "")).upper().strip()
+            comment = str(rej.get("comment", "") or matched_rejection.get("comment", "")).strip()
+            reason_text = str(rej.get("reason_text", "") or "").strip()
+
+            if code and not reason_text:
+                reason_text = self._build_reason_text(code=code, comment=comment)
+
             mapped = DEFAULT_CODE_MAP.get(code, "")
             confidence = float(item.get("confidence", 0.0) or 0.0)
             confidence = min(max(confidence, 0.0), 1.0)
@@ -75,7 +99,7 @@ class InspectionEngine:
 
             line = ReturnLine(
                 line_number=int(item.get("line_number", 0) or 0),
-                part_number=str(item.get("part_number", "") or "").strip(),
+                part_number=part_number,
                 description=str(item.get("description", "") or "").strip(),
                 qty_shipped=qty_shipped,
                 qty_approved=qty_approved,
@@ -85,8 +109,8 @@ class InspectionEngine:
                 rejection=RejectionDetail(
                     code=code,
                     mapped_bms_code=mapped,
-                    comment=str(rej.get("comment", "") or "").strip(),
-                    reason_text=str(rej.get("reason_text", "") or "").strip(),
+                    comment=comment,
+                    reason_text=reason_text,
                 ),
             )
             lines.append(line)
@@ -97,6 +121,8 @@ class InspectionEngine:
         return ProcessingResult(
             dealer_name=str(extracted.get("dealer_name", "") or "").strip(),
             rga_number=str(extracted.get("rga_number", "") or "").strip(),
+            rga_document_type=rga_doc_type,
+            rejected_document_type=rejected_doc_type,
             total_lines=len(lines),
             auto_applied_lines=auto_applied,
             review_lines=review_lines,
@@ -105,6 +131,64 @@ class InspectionEngine:
             raw_ocr_rga=rga_text,
             raw_ocr_rejections=rejection_text,
         )
+
+    @staticmethod
+    def detect_document_type(text: str) -> str:
+        value = text.lower()
+        if "rejected parts" in value or ("rejection" in value and "code" in value):
+            return "rejection_list"
+        if "credit memo" in value or "invoice" in value:
+            return "credit_memo"
+        if "rga" in value or "dret" in value or "ceco" in value:
+            return "rga_form"
+        return "unknown"
+
+    @staticmethod
+    def _extract_rejection_map(text: str) -> dict[str, dict[str, str]]:
+        matches: dict[str, dict[str, str]] = {}
+
+        patterns = [
+            re.compile(
+                r"\b(?P<part>\d{6,}[A-Z0-9]*)\b\s+(?P<qty>\d+)\s+(?P<code>[A-T])\b\s*(?P<comment>.*)",
+                flags=re.IGNORECASE,
+            ),
+            re.compile(
+                r"\b(?P<part>\d{6,}[A-Z0-9]*)\b\s+(?P<code>[A-T])\b\s*[-:]\s*(?P<comment>.+)",
+                flags=re.IGNORECASE,
+            ),
+        ]
+
+        for raw_line in text.splitlines():
+            line = re.sub(r"\s+", " ", raw_line).strip()
+            if not line:
+                continue
+
+            for pattern in patterns:
+                m = pattern.search(line)
+                if not m:
+                    continue
+
+                part = (m.groupdict().get("part") or "").strip()
+                code = (m.groupdict().get("code") or "").upper().strip()
+                comment = (m.groupdict().get("comment") or "").strip(" -:")
+
+                if not part or not code:
+                    continue
+
+                matches[part] = {
+                    "code": code,
+                    "comment": comment,
+                }
+                break
+
+        return matches
+
+    @staticmethod
+    def _build_reason_text(code: str, comment: str) -> str:
+        base = REJECTION_CODE_DESCRIPTION.get(code, "inspection rejection")
+        if comment:
+            return f"Item rejected - {base}. Inspector notes: {comment}."
+        return f"Item rejected - {base}."
 
     def heuristic_extract(self, rga_text: str, rejection_text: str) -> dict:
         merged_text = f"{rga_text}\n{rejection_text}"
