@@ -130,7 +130,7 @@
   <div class="wrap">
     <section class="hero">
       <h1>Dealer Returns AI Inspection</h1>
-      <p>Upload RGA and Rejected Parts images. OCR + open-source LLM returns BMS-ready JSON with confidence routing.</p>
+      <p>Upload RGA and Rejected Parts documents (image or PDF). OCR + open-source LLM returns BMS-ready JSON with confidence routing.</p>
       <div class="meta">
         <div class="chip">Threshold: 80% auto-apply</div>
         <div class="chip">Mode: Open-source models via Hugging Face</div>
@@ -139,12 +139,12 @@
 
     <section class="panel grid">
       <label>
-        RGA Image
-        <input id="rga" type="file" accept="image/*" />
+        RGA Document
+        <input id="rga" type="file" accept="image/*,.pdf,application/pdf" />
       </label>
       <label>
-        Rejected Parts Image
-        <input id="rej" type="file" accept="image/*" />
+        Rejected Parts Document
+        <input id="rej" type="file" accept="image/*,.pdf,application/pdf" />
       </label>
       <div>
         <button id="run">Process Documents</button>

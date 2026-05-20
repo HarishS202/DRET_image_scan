@@ -6,6 +6,7 @@ from fastapi.responses import FileResponse
 
 from app.config import get_settings
 from app.models import AnalysisSummary, ProcessingResult
+from app.services.file_normalizer import to_ocr_image_bytes
 from app.services.inspection_engine import InspectionEngine
 from app.services.llm import LLMService
 from app.services.ocr import OCRService
@@ -75,8 +76,8 @@ async def process_documents(
     rga_image: UploadFile = File(...),
     rejected_image: UploadFile = File(...),
 ) -> ProcessingResult:
-    rga_bytes = await rga_image.read()
-    rej_bytes = await rejected_image.read()
+    rga_bytes = await to_ocr_image_bytes(rga_image)
+    rej_bytes = await to_ocr_image_bytes(rejected_image)
 
     max_size = settings.max_image_size_mb * 1024 * 1024
     if len(rga_bytes) > max_size or len(rej_bytes) > max_size:
@@ -91,5 +92,8 @@ async def process_documents(
         extracted = llm.extract_json(prompt=prompt, fallback=fallback)
 
         return engine.post_process(extracted=extracted, rga_text=rga_text, rejection_text=rejection_text)
+    except HTTPException:
+        raise
     except Exception as ex:
-        raise HTTPException(status_code=500, detail=f"Processing failed: {str(ex)}") from ex
+        reason = str(ex).strip() or type(ex).__name__
+        raise HTTPException(status_code=500, detail=f"Processing failed: {reason}") from ex
