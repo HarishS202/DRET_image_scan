@@ -1,6 +1,4 @@
-from io import BytesIO
-
-import pypdfium2 as pdfium
+import fitz
 from fastapi import HTTPException, UploadFile
 
 
@@ -22,16 +20,12 @@ async def to_ocr_image_bytes(upload: UploadFile) -> bytes:
     is_pdf = name.endswith(".pdf") or ctype == "application/pdf"
     if is_pdf:
         try:
-            pdf = pdfium.PdfDocument(raw)
-            if len(pdf) < 1:
+            pdf = fitz.open(stream=raw, filetype="pdf")
+            if pdf.page_count < 1:
                 raise HTTPException(status_code=400, detail="Uploaded PDF has no pages")
-            page = pdf.get_page(0)
-            bitmap = page.render(scale=2.0)
-            pil_image = bitmap.to_pil()
-
-            buff = BytesIO()
-            pil_image.save(buff, format="PNG")
-            return buff.getvalue()
+            page = pdf.load_page(0)
+            pix = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+            return pix.tobytes("png")
         except HTTPException:
             raise
         except Exception as ex:
