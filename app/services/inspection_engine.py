@@ -127,7 +127,15 @@ class InspectionEngine:
         for pattern in patterns:
             m = re.search(pattern, text, flags=re.IGNORECASE)
             if m:
-                return m.group(1).strip()
+                value = m.group(1).strip()
+                # OCR frequently glues SOLD TO and SHIP TO names into one line.
+                split_markers = [" GPM PUMP", " PAGE ", " UNIT "]
+                for marker in split_markers:
+                    idx = value.upper().find(marker.strip().upper())
+                    if idx > 0:
+                        value = value[:idx].strip()
+                        break
+                return value
         return ""
 
     @staticmethod
@@ -140,24 +148,48 @@ class InspectionEngine:
         rows: list[dict] = []
         line_number = 1
 
-        pattern = re.compile(
-            r"([A-Za-z0-9]+)\s+[\-\u2013\u2014]\s*(\d+)\s+(\d{6,}[A-Z0-9]*)\s+(.+?)\s+CECO\b",
-            flags=re.IGNORECASE,
-        )
+        seen_parts: set[str] = set()
+        part_pattern = re.compile(r"\b(\d{6,}[A-Z0-9]*)\b", flags=re.IGNORECASE)
 
-        for m in pattern.finditer(text):
-            left_token = (m.group(1) or "").strip()
-            right_qty = int(m.group(2) or 0)
-            part_number = (m.group(3) or "").strip()
-            description = re.sub(r"\s+", " ", (m.group(4) or "").strip())
+        for raw_line in text.splitlines():
+            if "CECO" not in raw_line.upper():
+                continue
 
-            if left_token.isdigit():
-                qty_shipped = abs(int(left_token))
-                qty_approved = min(abs(right_qty), qty_shipped)
+            line = re.sub(r"\s+", " ", raw_line).strip()
+            if not line:
+                continue
+
+            part_match = part_pattern.search(line)
+            if not part_match:
+                continue
+
+            part_number = part_match.group(1)
+            if part_number in seen_parts:
+                continue
+
+            ceco_idx = line.upper().find(" CECO")
+            if ceco_idx <= part_match.end():
+                continue
+
+            prefix = line[: part_match.start()].strip()
+            description = line[part_match.end() : ceco_idx].strip(" -:\u201c\u201d\u2019'\"")
+            description = re.sub(r"\s+", " ", description)
+
+            if not description:
+                continue
+
+            qty_values = [abs(int(x)) for x in re.findall(r"-\s*(\d+)|\b(\d+)\b", prefix) for x in x if x]
+            if len(qty_values) >= 2:
+                qty_shipped = qty_values[0]
+                qty_approved = qty_values[1]
+            elif len(qty_values) == 1:
+                qty_shipped = qty_values[0]
+                qty_approved = qty_values[0]
             else:
-                qty_shipped = abs(right_qty)
-                qty_approved = abs(right_qty)
+                qty_shipped = 1
+                qty_approved = 1
 
+            qty_approved = min(qty_approved, qty_shipped)
             qty_rejected = max(qty_shipped - qty_approved, 0)
 
             rows.append(
@@ -168,7 +200,7 @@ class InspectionEngine:
                     "qty_shipped": qty_shipped,
                     "qty_approved": qty_approved,
                     "qty_rejected": qty_rejected,
-                    "confidence": 0.55,
+                    "confidence": 0.58,
                     "rejection": {
                         "code": "",
                         "comment": "",
@@ -176,6 +208,7 @@ class InspectionEngine:
                     },
                 }
             )
+            seen_parts.add(part_number)
             line_number += 1
 
         return rows
