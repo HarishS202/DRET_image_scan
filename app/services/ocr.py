@@ -10,7 +10,7 @@ import pytesseract
 
 class OCRService:
     def __init__(self, token: str | None, model: str, mode: str = "local_first") -> None:
-        self._client = InferenceClient(token=token, timeout=10)
+        self._client = InferenceClient(token=token, timeout=4)
         self._model = model
         self._mode = (mode or "local_first").strip().lower()
         self._cache: dict[str, str] = {}
@@ -22,10 +22,15 @@ class OCRService:
         if cache_key in self._cache:
             return self._cache[cache_key]
 
-        if self._mode == "local_first":
+        local_text = ""
+        if self._mode in {"local_only", "local_first"}:
             local_text = self._local_tesseract_ocr(image_bytes)
             if local_text and self._quality_score(local_text) >= 3:
                 self._put_cache(cache_key, local_text)
+                return local_text
+            if self._mode == "local_only":
+                if local_text:
+                    self._put_cache(cache_key, local_text)
                 return local_text
 
         try:
@@ -33,9 +38,7 @@ class OCRService:
             text = self._extract_generated_text(result)
             if text:
                 # In local-first mode, prefer the higher-quality OCR output.
-                if self._mode == "local_first":
-                    local_text = self._local_tesseract_ocr(image_bytes)
-                    if self._quality_score(local_text) > self._quality_score(text):
+                if local_text and self._quality_score(local_text) > self._quality_score(text):
                         text = local_text
                 self._put_cache(cache_key, text)
                 return text
@@ -43,13 +46,14 @@ class OCRService:
             # Fall back to local OCR when hosted inference is unavailable or returns empty output.
             pass
 
-        if self._mode != "local_first":
-            text = self._local_tesseract_ocr(image_bytes)
-            if text:
-                self._put_cache(cache_key, text)
-            return text
+        if local_text:
+            self._put_cache(cache_key, local_text)
+            return local_text
 
-        return ""
+        text = self._local_tesseract_ocr(image_bytes)
+        if text:
+            self._put_cache(cache_key, text)
+        return text
 
     @staticmethod
     def _quality_score(text: str) -> int:
