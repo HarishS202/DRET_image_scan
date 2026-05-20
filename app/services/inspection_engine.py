@@ -1,4 +1,5 @@
 import json
+import re
 from dataclasses import dataclass
 
 from app.models import ProcessingResult, RejectionDetail, ReturnLine
@@ -104,3 +105,77 @@ class InspectionEngine:
             raw_ocr_rga=rga_text,
             raw_ocr_rejections=rejection_text,
         )
+
+    def heuristic_extract(self, rga_text: str, rejection_text: str) -> dict:
+        merged_text = f"{rga_text}\n{rejection_text}"
+        dealer_name = self._extract_dealer_name(merged_text)
+        rga_number = self._extract_rga_number(merged_text)
+        lines = self._extract_lines_from_text(merged_text)
+
+        return {
+            "dealer_name": dealer_name,
+            "rga_number": rga_number,
+            "lines": lines,
+        }
+
+    @staticmethod
+    def _extract_dealer_name(text: str) -> str:
+        patterns = [
+            r"SOLD\s*TO\s*\n\s*([^\n]+)",
+            r"SHIP\s*TO\s*\n\s*([^\n]+)",
+        ]
+        for pattern in patterns:
+            m = re.search(pattern, text, flags=re.IGNORECASE)
+            if m:
+                return m.group(1).strip()
+        return ""
+
+    @staticmethod
+    def _extract_rga_number(text: str) -> str:
+        m = re.search(r"\bRTN[\w-]+\b", text, flags=re.IGNORECASE)
+        return m.group(0) if m else ""
+
+    @staticmethod
+    def _extract_lines_from_text(text: str) -> list[dict]:
+        rows: list[dict] = []
+        line_number = 1
+
+        pattern = re.compile(
+            r"([A-Za-z0-9]+)\s+[\-\u2013\u2014]\s*(\d+)\s+(\d{6,}[A-Z0-9]*)\s+(.+?)\s+CECO\b",
+            flags=re.IGNORECASE,
+        )
+
+        for m in pattern.finditer(text):
+            left_token = (m.group(1) or "").strip()
+            right_qty = int(m.group(2) or 0)
+            part_number = (m.group(3) or "").strip()
+            description = re.sub(r"\s+", " ", (m.group(4) or "").strip())
+
+            if left_token.isdigit():
+                qty_shipped = abs(int(left_token))
+                qty_approved = min(abs(right_qty), qty_shipped)
+            else:
+                qty_shipped = abs(right_qty)
+                qty_approved = abs(right_qty)
+
+            qty_rejected = max(qty_shipped - qty_approved, 0)
+
+            rows.append(
+                {
+                    "line_number": line_number,
+                    "part_number": part_number,
+                    "description": description,
+                    "qty_shipped": qty_shipped,
+                    "qty_approved": qty_approved,
+                    "qty_rejected": qty_rejected,
+                    "confidence": 0.55,
+                    "rejection": {
+                        "code": "",
+                        "comment": "",
+                        "reason_text": "",
+                    },
+                }
+            )
+            line_number += 1
+
+        return rows

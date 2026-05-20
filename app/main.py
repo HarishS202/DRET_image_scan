@@ -97,6 +97,9 @@ async def process_documents(
         fallback = {"dealer_name": "", "rga_number": "", "lines": []}
         extracted = llm.extract_json(prompt=prompt, fallback=fallback)
 
+        if not extracted.get("lines"):
+            extracted = engine.heuristic_extract(rga_text=rga_text, rejection_text=rejection_text)
+
         return engine.post_process(extracted=extracted, rga_text=rga_text, rejection_text=rejection_text)
     except HTTPException:
         raise
