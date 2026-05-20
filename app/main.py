@@ -23,7 +23,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-ocr = OCRService(token=settings.hf_token, model=settings.hf_ocr_model)
+ocr = OCRService(token=settings.hf_token, model=settings.hf_ocr_model, mode=settings.ocr_execution_mode)
 llm = LLMService(token=settings.hf_token, model=settings.hf_llm_model)
 engine = InspectionEngine(threshold=settings.auto_apply_threshold)
 dret_repo = DRETRepository()
@@ -44,6 +44,7 @@ def health() -> dict:
         "llm_model": settings.hf_llm_model,
         "performance_mode": settings.performance_mode,
         "enable_llm_enrichment": settings.enable_llm_enrichment,
+        "ocr_execution_mode": settings.ocr_execution_mode,
     }
 
 

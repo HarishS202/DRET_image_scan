@@ -8,9 +8,10 @@ import pytesseract
 
 
 class OCRService:
-    def __init__(self, token: str | None, model: str) -> None:
-        self._client = InferenceClient(token=token)
+    def __init__(self, token: str | None, model: str, mode: str = "local_first") -> None:
+        self._client = InferenceClient(token=token, timeout=10)
         self._model = model
+        self._mode = (mode or "local_first").strip().lower()
         self._cache: dict[str, str] = {}
         self._cache_order: deque[str] = deque()
         self._max_cache_entries = 256
@@ -19,6 +20,12 @@ class OCRService:
         cache_key = self._cache_key(image_bytes)
         if cache_key in self._cache:
             return self._cache[cache_key]
+
+        if self._mode == "local_first":
+            local_text = self._local_tesseract_ocr(image_bytes)
+            if local_text:
+                self._put_cache(cache_key, local_text)
+                return local_text
 
         try:
             result = self._client.image_to_text(image=image_bytes, model=self._model)
@@ -30,10 +37,13 @@ class OCRService:
             # Fall back to local OCR when hosted inference is unavailable or returns empty output.
             pass
 
-        text = self._local_tesseract_ocr(image_bytes)
-        if text:
-            self._put_cache(cache_key, text)
-        return text
+        if self._mode != "local_first":
+            text = self._local_tesseract_ocr(image_bytes)
+            if text:
+                self._put_cache(cache_key, text)
+            return text
+
+        return ""
 
     @staticmethod
     def _cache_key(image_bytes: bytes) -> str:

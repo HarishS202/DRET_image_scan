@@ -24,7 +24,8 @@ async def to_ocr_image_bytes(upload: UploadFile) -> bytes:
             if pdf.page_count < 1:
                 raise HTTPException(status_code=400, detail="Uploaded PDF has no pages")
             page = pdf.load_page(0)
-            pix = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+            # Lower render scale keeps text legible while reducing processing time.
+            pix = page.get_pixmap(matrix=fitz.Matrix(1.4, 1.4), alpha=False)
             return pix.tobytes("png")
         except HTTPException:
             raise
