@@ -25,6 +25,7 @@ class ProcessingResult(BaseModel):
     rga_number: str = ""
     rga_document_type: str = "unknown"
     rejected_document_type: str = "unknown"
+    warnings: list[str] = Field(default_factory=list)
     total_lines: int = 0
     auto_applied_lines: int = 0
     review_lines: int = 0

@@ -117,12 +117,19 @@ class InspectionEngine:
 
         auto_applied = sum(1 for ln in lines if ln.auto_apply)
         review_lines = len(lines) - auto_applied
+        warnings = self._build_warnings(
+            rga_doc_type=rga_doc_type,
+            rejected_doc_type=rejected_doc_type,
+            lines=lines,
+            rejection_map=rejection_map,
+        )
 
         return ProcessingResult(
             dealer_name=str(extracted.get("dealer_name", "") or "").strip(),
             rga_number=str(extracted.get("rga_number", "") or "").strip(),
             rga_document_type=rga_doc_type,
             rejected_document_type=rejected_doc_type,
+            warnings=warnings,
             total_lines=len(lines),
             auto_applied_lines=auto_applied,
             review_lines=review_lines,
@@ -189,6 +196,29 @@ class InspectionEngine:
         if comment:
             return f"Item rejected - {base}. Inspector notes: {comment}."
         return f"Item rejected - {base}."
+
+    @staticmethod
+    def _build_warnings(
+        rga_doc_type: str,
+        rejected_doc_type: str,
+        lines: list[ReturnLine],
+        rejection_map: dict[str, dict[str, str]],
+    ) -> list[str]:
+        warnings: list[str] = []
+
+        if rga_doc_type == "unknown":
+            warnings.append("First document could not be identified as an RGA form. Upload the filled RGA inspection page.")
+        elif rga_doc_type == "credit_memo":
+            warnings.append("First document appears to be a credit memo, not an RGA inspection form.")
+
+        if rejected_doc_type != "rejection_list":
+            warnings.append("Second document is not a rejected-parts list with code/comment entries.")
+
+        has_any_code = any((line.rejection.code or "").strip() for line in lines)
+        if lines and not has_any_code and not rejection_map:
+            warnings.append("No rejection codes detected. Rejection reasons cannot be generated for this upload pair.")
+
+        return warnings
 
     def heuristic_extract(self, rga_text: str, rejection_text: str) -> dict:
         merged_text = f"{rga_text}\n{rejection_text}"

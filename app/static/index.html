@@ -191,7 +191,10 @@
           return;
         }
 
-        statusEl.innerHTML = `<span class="ok">Status: done</span> | Auto-applied: ${data.auto_applied_lines}/${data.total_lines} | Review: ${data.review_lines}`;
+        const warningText = (data.warnings && data.warnings.length)
+          ? ` | <span class="warn">Warnings: ${data.warnings.join("; ")}</span>`
+          : "";
+        statusEl.innerHTML = `<span class="ok">Status: done</span> | Auto-applied: ${data.auto_applied_lines}/${data.total_lines} | Review: ${data.review_lines}${warningText}`;
         outEl.textContent = JSON.stringify(data, null, 2);
       } catch (err) {
         statusEl.innerHTML = '<span class="warn">Status: network or server error</span>';
