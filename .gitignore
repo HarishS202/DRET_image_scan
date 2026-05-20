@@ -1,0 +1,31 @@
+# Secrets – never commit these
+.env
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# Logs and temp
+*.log
+.tmp_pptx/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# Test artefacts
+.pytest_cache/
+htmlcov/
+.coverage
