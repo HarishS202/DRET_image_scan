@@ -1,6 +1,7 @@
 from io import BytesIO
 import hashlib
 from collections import deque
+import re
 
 from huggingface_hub import InferenceClient
 from PIL import Image
@@ -23,7 +24,7 @@ class OCRService:
 
         if self._mode == "local_first":
             local_text = self._local_tesseract_ocr(image_bytes)
-            if local_text:
+            if local_text and self._quality_score(local_text) >= 3:
                 self._put_cache(cache_key, local_text)
                 return local_text
 
@@ -31,6 +32,11 @@ class OCRService:
             result = self._client.image_to_text(image=image_bytes, model=self._model)
             text = self._extract_generated_text(result)
             if text:
+                # In local-first mode, prefer the higher-quality OCR output.
+                if self._mode == "local_first":
+                    local_text = self._local_tesseract_ocr(image_bytes)
+                    if self._quality_score(local_text) > self._quality_score(text):
+                        text = local_text
                 self._put_cache(cache_key, text)
                 return text
         except Exception:
@@ -44,6 +50,17 @@ class OCRService:
             return text
 
         return ""
+
+    @staticmethod
+    def _quality_score(text: str) -> int:
+        if not text:
+            return 0
+
+        part_hits = len(re.findall(r"\b\d{6,}[A-Z0-9]*\b", text))
+        ceco_hits = len(re.findall(r"\bCECO\b", text, flags=re.IGNORECASE))
+        line_hits = len([line for line in text.splitlines() if line.strip()])
+
+        return part_hits + (2 * ceco_hits) + (1 if line_hits > 8 else 0)
 
     @staticmethod
     def _cache_key(image_bytes: bytes) -> str:
