@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     # Business controls from requirement deck
     auto_apply_threshold: float = 0.80
     max_image_size_mb: int = 10
+    performance_mode: bool = True
+    enable_llm_enrichment: bool = False
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

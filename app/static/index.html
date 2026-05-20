@@ -135,10 +135,10 @@
   <div class="wrap">
     <section class="hero">
       <h1>Dealer Returns AI Inspection</h1>
-      <p>Upload RGA and Rejected Parts documents (image or PDF). OCR + open-source LLM returns BMS-ready JSON with confidence routing.</p>
+      <p>Upload RGA document (required). Rejected Parts document is optional. Fast OCR + rule extraction returns BMS-ready JSON with confidence routing.</p>
       <div class="meta">
         <div class="chip">Threshold: 80% auto-apply</div>
-        <div class="chip">Mode: Open-source models via Hugging Face</div>
+        <div class="chip">Mode: Performance (heuristic-first)</div>
       </div>
     </section>
 
@@ -148,7 +148,7 @@
         <input id="rga" type="file" accept="image/*,.pdf,application/pdf" />
       </label>
       <label>
-        Rejected Parts Document
+        Rejected Parts Document (Optional)
         <input id="rej" type="file" accept="image/*,.pdf,application/pdf" />
       </label>
       <div>
@@ -176,14 +176,16 @@
       const rga = document.getElementById("rga").files[0];
       const rej = document.getElementById("rej").files[0];
 
-      if (!rga || !rej) {
-        statusEl.innerHTML = '<span class="warn">Status: choose both images first</span>';
+      if (!rga) {
+        statusEl.innerHTML = '<span class="warn">Status: choose RGA document first</span>';
         return;
       }
 
       const form = new FormData();
       form.append("rga_image", rga);
-      form.append("rejected_image", rej);
+      if (rej) {
+        form.append("rejected_image", rej);
+      }
 
       statusEl.textContent = "Status: processing...";
       outEl.textContent = "{}";

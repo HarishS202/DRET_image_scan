@@ -42,6 +42,8 @@ def health() -> dict:
         "threshold": settings.auto_apply_threshold,
         "ocr_model": settings.hf_ocr_model,
         "llm_model": settings.hf_llm_model,
+        "performance_mode": settings.performance_mode,
+        "enable_llm_enrichment": settings.enable_llm_enrichment,
     }
 
 
@@ -76,18 +78,21 @@ def analysis() -> AnalysisSummary:
 @app.post("/process", response_model=ProcessingResult)
 async def process_documents(
     rga_image: UploadFile = File(...),
-    rejected_image: UploadFile = File(...),
+    rejected_image: UploadFile | None = File(None),
 ) -> ProcessingResult:
     rga_bytes = await to_ocr_image_bytes(rga_image)
-    rej_bytes = await to_ocr_image_bytes(rejected_image)
+
+    rej_bytes = b""
+    if rejected_image is not None and (rejected_image.filename or "").strip():
+        rej_bytes = await to_ocr_image_bytes(rejected_image)
 
     max_size = settings.max_image_size_mb * 1024 * 1024
-    if len(rga_bytes) > max_size or len(rej_bytes) > max_size:
+    if len(rga_bytes) > max_size or (rej_bytes and len(rej_bytes) > max_size):
         raise HTTPException(status_code=400, detail="One or more files exceed max size limit")
 
     try:
         rga_text = ocr.image_to_text(rga_bytes)
-        rejection_text = ocr.image_to_text(rej_bytes)
+        rejection_text = ocr.image_to_text(rej_bytes) if rej_bytes else ""
 
         if not rga_text.strip() and not rejection_text.strip():
             raise HTTPException(
@@ -95,12 +100,14 @@ async def process_documents(
                 detail="No readable text extracted from uploaded files. Use clearer scan/image or different page.",
             )
 
-        prompt = engine.build_prompt(rga_text=rga_text, rejection_text=rejection_text)
-        fallback = {"dealer_name": "", "rga_number": "", "lines": []}
-        extracted = llm.extract_json(prompt=prompt, fallback=fallback)
+        extracted = engine.heuristic_extract(rga_text=rga_text, rejection_text=rejection_text)
 
-        if not extracted.get("lines"):
-            extracted = engine.heuristic_extract(rga_text=rga_text, rejection_text=rejection_text)
+        if settings.enable_llm_enrichment and (not settings.performance_mode):
+            prompt = engine.build_prompt(rga_text=rga_text, rejection_text=rejection_text)
+            fallback = extracted
+            llm_extracted = llm.extract_json(prompt=prompt, fallback=fallback)
+            if llm_extracted.get("lines"):
+                extracted = llm_extracted
 
         return engine.post_process(extracted=extracted, rga_text=rga_text, rejection_text=rejection_text)
     except HTTPException:

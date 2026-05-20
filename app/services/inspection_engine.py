@@ -210,22 +210,23 @@ class InspectionEngine:
         rejection_text: str,
     ) -> list[str]:
         warnings: list[str] = []
+        has_rejection_input = bool((rejection_text or "").strip())
 
         if rga_doc_type == "unknown":
             warnings.append("First document could not be identified as an RGA form. Upload the filled RGA inspection page.")
         elif rga_doc_type == "credit_memo":
             warnings.append("First document appears to be a credit memo, not an RGA inspection form.")
 
-        if rejected_doc_type != "rejection_list":
+        if has_rejection_input and rejected_doc_type != "rejection_list":
             warnings.append("Second document is not a rejected-parts list with code/comment entries.")
 
         has_any_code = any((line.rejection.code or "").strip() for line in lines)
-        if lines and not has_any_code and not rejection_map:
+        if has_rejection_input and lines and not has_any_code and not rejection_map:
             warnings.append("No rejection codes detected. Rejection reasons cannot be generated for this upload pair.")
 
         a = re.sub(r"\s+", " ", (rga_text or "")).strip().lower()
         b = re.sub(r"\s+", " ", (rejection_text or "")).strip().lower()
-        if a and b:
+        if has_rejection_input and a and b:
             similarity = SequenceMatcher(None, a, b).ratio()
             if similarity >= 0.96:
                 warnings.append("Both uploads appear to be the same document. Upload RGA form as first file and rejected-parts list as second file.")
