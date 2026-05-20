@@ -1,5 +1,6 @@
 import json
 import re
+from difflib import SequenceMatcher
 from dataclasses import dataclass
 
 from app.models import ProcessingResult, RejectionDetail, ReturnLine
@@ -122,6 +123,8 @@ class InspectionEngine:
             rejected_doc_type=rejected_doc_type,
             lines=lines,
             rejection_map=rejection_map,
+            rga_text=rga_text,
+            rejection_text=rejection_text,
         )
 
         return ProcessingResult(
@@ -203,6 +206,8 @@ class InspectionEngine:
         rejected_doc_type: str,
         lines: list[ReturnLine],
         rejection_map: dict[str, dict[str, str]],
+        rga_text: str,
+        rejection_text: str,
     ) -> list[str]:
         warnings: list[str] = []
 
@@ -217,6 +222,13 @@ class InspectionEngine:
         has_any_code = any((line.rejection.code or "").strip() for line in lines)
         if lines and not has_any_code and not rejection_map:
             warnings.append("No rejection codes detected. Rejection reasons cannot be generated for this upload pair.")
+
+        a = re.sub(r"\s+", " ", (rga_text or "")).strip().lower()
+        b = re.sub(r"\s+", " ", (rejection_text or "")).strip().lower()
+        if a and b:
+            similarity = SequenceMatcher(None, a, b).ratio()
+            if similarity >= 0.96:
+                warnings.append("Both uploads appear to be the same document. Upload RGA form as first file and rejected-parts list as second file.")
 
         return warnings
 
