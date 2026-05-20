@@ -1,4 +1,6 @@
 from io import BytesIO
+import hashlib
+from collections import deque
 
 from huggingface_hub import InferenceClient
 from PIL import Image
@@ -9,18 +11,45 @@ class OCRService:
     def __init__(self, token: str | None, model: str) -> None:
         self._client = InferenceClient(token=token)
         self._model = model
+        self._cache: dict[str, str] = {}
+        self._cache_order: deque[str] = deque()
+        self._max_cache_entries = 256
 
     def image_to_text(self, image_bytes: bytes) -> str:
+        cache_key = self._cache_key(image_bytes)
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+
         try:
             result = self._client.image_to_text(image=image_bytes, model=self._model)
             text = self._extract_generated_text(result)
             if text:
+                self._put_cache(cache_key, text)
                 return text
         except Exception:
             # Fall back to local OCR when hosted inference is unavailable or returns empty output.
             pass
 
-        return self._local_tesseract_ocr(image_bytes)
+        text = self._local_tesseract_ocr(image_bytes)
+        if text:
+            self._put_cache(cache_key, text)
+        return text
+
+    @staticmethod
+    def _cache_key(image_bytes: bytes) -> str:
+        return hashlib.sha256(image_bytes).hexdigest()
+
+    def _put_cache(self, key: str, value: str) -> None:
+        if key in self._cache:
+            self._cache[key] = value
+            return
+
+        self._cache[key] = value
+        self._cache_order.append(key)
+
+        while len(self._cache_order) > self._max_cache_entries:
+            oldest = self._cache_order.popleft()
+            self._cache.pop(oldest, None)
 
     @staticmethod
     def _extract_generated_text(result: object) -> str:
