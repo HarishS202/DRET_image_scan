@@ -7,7 +7,10 @@ class OCRService:
         self._model = model
 
     def image_to_text(self, image_bytes: bytes) -> str:
-        result = self._client.image_to_text(image=image_bytes, model=self._model)
+        try:
+            result = self._client.image_to_text(image=image_bytes, model=self._model)
+        except StopIteration:
+            return ""
 
         if isinstance(result, list):
             chunks = []
