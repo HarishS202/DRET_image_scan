@@ -86,6 +86,11 @@
       transition: transform 0.15s ease, box-shadow 0.2s ease;
     }
 
+    .secondary-btn {
+      background: linear-gradient(90deg, var(--accent-2), #e08d6f);
+      margin-top: 10px;
+    }
+
     button:hover {
       transform: translateY(-1px);
       box-shadow: 0 8px 18px #1f6f7840;
@@ -153,6 +158,7 @@
 
     <section class="panel">
       <div id="status" class="status">Status: waiting for upload</div>
+      <button id="createDret" class="secondary-btn">Create DRET Order</button>
     </section>
 
     <section class="panel">
@@ -164,6 +170,7 @@
   <script>
     const statusEl = document.getElementById("status");
     const outEl = document.getElementById("out");
+    let lastProcessedData = null;
 
     document.getElementById("run").addEventListener("click", async () => {
       const rga = document.getElementById("rga").files[0];
@@ -188,6 +195,7 @@
         if (!res.ok) {
           statusEl.innerHTML = '<span class="warn">Status: failed</span>';
           outEl.textContent = JSON.stringify(data, null, 2);
+          lastProcessedData = null;
           return;
         }
 
@@ -196,9 +204,36 @@
           : "";
         statusEl.innerHTML = `<span class="ok">Status: done</span> | Auto-applied: ${data.auto_applied_lines}/${data.total_lines} | Review: ${data.review_lines}${warningText}`;
         outEl.textContent = JSON.stringify(data, null, 2);
+        lastProcessedData = data;
       } catch (err) {
         statusEl.innerHTML = '<span class="warn">Status: network or server error</span>';
         outEl.textContent = String(err);
+        lastProcessedData = null;
+      }
+    });
+
+    document.getElementById("createDret").addEventListener("click", async () => {
+      if (!lastProcessedData) {
+        statusEl.innerHTML = '<span class="warn">Status: process a document first, then create DRET order</span>';
+        return;
+      }
+
+      try {
+        const res = await fetch("/dret/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(lastProcessedData),
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          statusEl.innerHTML = `<span class="warn">Status: ${data.detail || "DRET order creation failed"}</span>`;
+          return;
+        }
+
+        statusEl.innerHTML = `<span class="ok">${data.message} with order number ${data.order_number}</span>`;
+      } catch (err) {
+        statusEl.innerHTML = `<span class="warn">Status: DRET create request failed - ${String(err)}</span>`;
       }
     });
   </script>

@@ -40,3 +40,9 @@ class AnalysisSummary(BaseModel):
     future_state: list[str]
     phased_rollout: list[str]
     approvals_needed: list[str]
+
+
+class DRETCreateResponse(BaseModel):
+    success: bool = True
+    message: str
+    order_number: str

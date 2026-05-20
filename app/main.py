@@ -5,7 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from app.config import get_settings
-from app.models import AnalysisSummary, ProcessingResult
+from app.models import AnalysisSummary, DRETCreateResponse, ProcessingResult
+from app.services.dret_repository import DRETRepository
 from app.services.file_normalizer import to_ocr_image_bytes
 from app.services.inspection_engine import InspectionEngine
 from app.services.llm import LLMService
@@ -25,6 +26,7 @@ app.add_middleware(
 ocr = OCRService(token=settings.hf_token, model=settings.hf_ocr_model)
 llm = LLMService(token=settings.hf_token, model=settings.hf_llm_model)
 engine = InspectionEngine(threshold=settings.auto_apply_threshold)
+dret_repo = DRETRepository()
 
 
 @app.get("/", response_class=FileResponse)
@@ -106,3 +108,20 @@ async def process_documents(
     except Exception as ex:
         reason = str(ex).strip() or type(ex).__name__
         raise HTTPException(status_code=500, detail=f"Processing failed: {reason}") from ex
+
+
+@app.post("/dret/create", response_model=DRETCreateResponse)
+def create_dret_order(payload: ProcessingResult) -> DRETCreateResponse:
+    if not payload.lines:
+        raise HTTPException(status_code=400, detail="No lines available to create DRET order")
+
+    try:
+        order_number = dret_repo.create_order(payload)
+        return DRETCreateResponse(
+            success=True,
+            message="DRET order got created successfully",
+            order_number=order_number,
+        )
+    except Exception as ex:
+        reason = str(ex).strip() or type(ex).__name__
+        raise HTTPException(status_code=500, detail=f"DRET order creation failed: {reason}") from ex
