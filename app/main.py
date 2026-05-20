@@ -87,6 +87,12 @@ async def process_documents(
         rga_text = ocr.image_to_text(rga_bytes)
         rejection_text = ocr.image_to_text(rej_bytes)
 
+        if not rga_text.strip() and not rejection_text.strip():
+            raise HTTPException(
+                status_code=422,
+                detail="No readable text extracted from uploaded files. Use clearer scan/image or different page.",
+            )
+
         prompt = engine.build_prompt(rga_text=rga_text, rejection_text=rejection_text)
         fallback = {"dealer_name": "", "rga_number": "", "lines": []}
         extracted = llm.extract_json(prompt=prompt, fallback=fallback)
